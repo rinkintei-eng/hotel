@@ -56,6 +56,7 @@
             LIFF_ID: "2008400942-3JbRekRM",
             OFFICIAL_LINE_URL: "https://lin.ee/LTFdIJo",
             N8N_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/650159db-37eb-4bfe-9aa1-01bed4d5b989",
+            N8N_LOG_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/log-event", 
             AGODA_CID: "1932313",
             AGODA_HOME: "https://www.agoda.com/"
         };
@@ -146,20 +147,22 @@
                 }
             },
             openLink: (e, url) => {
-                if (!url || url === "#") {
-                    e.preventDefault();
-                    return;
-                }
+                // 1. 攔截預設跳轉，改由 JS 控制
+                if (e) e.preventDefault();
 
-                // [關鍵] 強制使用外部瀏覽器開啟 Agoda 連結
+                if (!url || url === "#") return;
+
+                // 2. 判斷環境並執行跳轉
                 if (window.liff && window.liff.isInClient && window.liff.isInClient()) {
-                    e.preventDefault();
+                    // LINE 環境：強制使用外部瀏覽器 (External Browser)
                     window.liff.openWindow({
                         url: url,
-                        external: true // true = 跳出 LINE，使用 Chrome/Safari
+                        external: true 
                     });
+                } else {
+                    // 一般網頁環境：強制開新分頁 (New Tab)
+                    window.open(url, '_blank', 'noopener,noreferrer');
                 }
-                // 一般網頁環境維持 target="_blank"
             }
         };
 
@@ -263,7 +266,7 @@
                     { id: 'Yilan', name: '宜蘭', icon: Onsen, color: 'text-green-600' },
                     { id: 'Hualien', name: '花蓮', icon: Mountain, color: 'text-emerald-600' },
                     { id: 'Taitung', name: '台東', icon: Balloon, color: 'text-orange-400' },
-                    { id: 'Sun Moon Lake', name: '日月潭', icon: Mountain, color: 'text-blue-400' },
+                    { id: 'SunMoonLake', name: '日月潭', icon: Mountain, color: 'text-blue-400' },
                     { id: 'Jiayi', name: '嘉義', icon: Mountain, color: 'text-green-700' },
                     { id: 'Kenting', name: '墾丁', icon: Lighthouse, color: 'text-blue-500' },
                 ]
@@ -279,7 +282,6 @@
             }), {})
         };
 
-        // --- 模擬後端回傳的資料 (全解鎖模式) ---
         const generateFallbackData = () => {
             const fallbackData = [];
             const today = new Date();
@@ -304,7 +306,6 @@
                 fallbackData.push(row);
             }
             
-            // 模擬價格資料
             const priceData = [];
             CITIES.forEach(city => {
                 for (let m = 0; m < 6; m++) {
@@ -328,7 +329,7 @@
             };
         };
 
-        // --- 獨立元件: Header ---
+        // --- UI Components ---
         const Header = memo(({ onOpenCitySelector }) => (
             <div className="px-4 py-3 bg-white flex-none flex items-center justify-between shadow-sm z-20 relative">
                 <div className="flex items-center gap-2">
@@ -391,21 +392,15 @@
             </div>
         ));
 
-        const CityActionButtons = memo(({ insight, selectedCityName, selectedCityId }) => {
-            const handleAgodaClick = (e) => {
-                const agodaBase = CITY_RESOURCES[selectedCityId]?.agoda;
-                const finalUrl = UrlUtils.buildAgodaUrl(agodaBase);
-                UrlUtils.openLink(e, finalUrl);
-            };
+        const CityActionButtons = memo(({ insight, selectedCityName, selectedCityId, onAgodaClick, onArticleClick }) => {
+            const NO_RECOMMENDATION_IDS = [
+                'Seoul', 
+                'Taipei', 'Taichung', 'Tainan', 'Kaohsiung', 'Yilan', 
+                'Hualien', 'Taitung', 'SunMoonLake', 'Jiayi', 'Kenting'
+            ];
 
-            const handleArticleClick = (e) => {
-                const url = CITY_RESOURCES[selectedCityId]?.article || "#";
-                UrlUtils.openLink(e, url);
-            }
-
-            const showRecommendation = !!CITY_RESOURCES[selectedCityId]?.article;
-            const agodaBase = CITY_RESOURCES[selectedCityId]?.agoda;
-            const displayAgodaUrl = UrlUtils.buildAgodaUrl(agodaBase);
+            const showRecommendation = !NO_RECOMMENDATION_IDS.includes(selectedCityId);
+            const displayAgodaUrl = UrlUtils.buildAgodaUrl(insight?.agodaUrl);
 
             return (
                 <div className="px-2 mb-6 space-y-3">
@@ -413,7 +408,7 @@
                         href={displayAgodaUrl} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        onClick={handleAgodaClick}
+                        onClick={onAgodaClick}
                         className="flex items-center justify-between w-full bg-white p-4 rounded-xl border border-red-100 shadow-sm hover:shadow-md active:scale-98 transition-all group cursor-pointer"
                      >
                         <div className="flex items-center gap-3">
@@ -425,8 +420,10 @@
                     
                     {showRecommendation && (
                          <a 
-                            href={CITY_RESOURCES[selectedCityId]?.article || "#"} 
-                            onClick={handleArticleClick}
+                            href={insight?.articleUrl || "#"} 
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={onArticleClick}
                             className="flex items-center justify-between w-full bg-white p-4 rounded-xl border border-blue-100 shadow-sm hover:shadow-md active:scale-98 transition-all group cursor-pointer"
                          >
                             <div className="flex items-center gap-3">
@@ -459,20 +456,13 @@
             </div>
         ));
 
-        const CalendarGrid = memo(({ days, firstDay, year, month, data, selectedCityId, agodaBaseUrl }) => {
+        const CalendarGrid = memo(({ days, firstDay, year, month, data, selectedCityId, agodaBaseUrl, onDateClick }) => {
             const calendarCells = useMemo(() => {
                 const cells = [];
                 for (let i = 0; i < firstDay; i++) cells.push(null);
                 for (let i = 1; i <= days; i++) cells.push(i);
                 return cells;
             }, [days, firstDay]);
-
-            const handleDateClick = (e, url) => {
-                UrlUtils.openLink(e, url);
-            };
-
-            // 取得該城市的基礎 Agoda URL
-            const agodaBaseUrlFromResources = CITY_RESOURCES[selectedCityId]?.agoda;
 
             return (
                 <div className="grid grid-cols-7 gap-1 md:gap-2 mb-6 pt-2">
@@ -495,16 +485,13 @@
                         const displayIndex = dayData?.index;
                         const cellStyle = getTagStyle(tag);
 
-                        // 建構 Agoda 連結
-                        const targetUrl = UrlUtils.buildAgodaUrl(agodaBaseUrlFromResources, safeDateStr);
+                        const targetUrl = UrlUtils.buildAgodaUrl(agodaBaseUrl, safeDateStr);
 
                         return (
                             <a 
                                 key={safeDateStr} 
                                 href={targetUrl}
-                                onClick={(e) => handleDateClick(e, targetUrl)}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                onClick={(e) => onDateClick(e, targetUrl, safeDateStr, indexVal)}
                                 className={`h-[72px] flex flex-col justify-between p-1.5 rounded-lg border transition-all relative overflow-hidden cursor-pointer ${cellStyle} ${(tag === '⚠️ 無數據') ? 'opacity-50 pointer-events-none' : 'hover:scale-105 shadow-sm'}`}
                             >
                                 <span className={`text-sm font-semibold relative z-10 ${(tag === '⚠️ 無數據') ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
@@ -548,8 +535,14 @@
             );
         });
 
-        const AnalysisSection = memo(({ insight }) => {
+        const AnalysisSection = memo(({ insight, onToggle }) => {
             const [isExpanded, setIsExpanded] = useState(false);
+            
+            const handleToggle = () => {
+                const newState = !isExpanded;
+                setIsExpanded(newState);
+                if (newState) onToggle(); 
+            };
 
             return (
                 <div className="px-1">
@@ -557,7 +550,7 @@
                         <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-purple-200 rounded-full opacity-20 blur-xl"></div>
                         
                         <button 
-                            onClick={() => setIsExpanded(!isExpanded)}
+                            onClick={handleToggle}
                             className="w-full flex items-center justify-between p-4 relative z-10 text-left focus:outline-none"
                         >
                             <div className="flex items-center gap-2">
@@ -602,13 +595,48 @@
             const [currentDate, setCurrentDate] = useState(new Date());
             const [errorMsg, setErrorMsg] = useState(""); 
             const [showCitySelector, setShowCitySelector] = useState(false); 
+            const [userId, setUserId] = useState(null); 
+
+            // --- 核心 Log 函式 ---
+            const sendUserLog = useCallback((action, payload = {}, overrideCity = null) => {
+                if (!CONFIG.N8N_LOG_WEBHOOK_URL) return;
+                
+                // 優先使用 overrideCity，若無則使用當前 selectedCity
+                const cityToLog = overrideCity || selectedCity.name;
+                
+                const logData = {
+                    userId: userId || 'guest',
+                    action: action,
+                    city: cityToLog,
+                    timestamp: new Date().toISOString(),
+                    ...payload
+                };
+                
+                try {
+                    fetch(CONFIG.N8N_LOG_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(logData),
+                        keepalive: true 
+                    }).catch(e => console.warn("Log failed:", e));
+                } catch(e) {}
+            }, [userId, selectedCity]);
 
             useEffect(() => {
                 const initializeApp = async () => {
                     setLoading(true);
-                    
+                    let uid = null;
+
                     try {
-                        if (window.liff) await liff.init({ liffId: CONFIG.LIFF_ID });
+                        if (window.liff) {
+                            await liff.init({ liffId: CONFIG.LIFF_ID });
+                            if (liff.isLoggedIn()) {
+                                const profile = await liff.getProfile();
+                                uid = profile.userId;
+                                setUserId(uid); 
+                                console.log("LIFF User ID:", uid);
+                            }
+                        }
                     } catch (err) {
                         console.log("LIFF Init skipped:", err);
                     }
@@ -620,7 +648,7 @@
                         const response = await fetch(CONFIG.N8N_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId: null }), 
+                            body: JSON.stringify({ userId: uid }), 
                             signal: controller.signal
                         });
                         clearTimeout(timeoutId);
@@ -705,8 +733,43 @@
 
             const handlePrevMonth = useCallback(() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)), []);
             const handleNextMonth = useCallback(() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)), []);
-            const handleCitySelect = useCallback((city) => setSelectedCity(city), []);
+            
+            // [Log] 城市切換 - 修正為記錄「目標城市」
+            const handleCitySelect = useCallback((city) => {
+                setSelectedCity(city);
+                sendUserLog('select_city', { target_city: city.name }, city.name);
+            }, [sendUserLog]);
+            
             const toggleCitySelector = useCallback(() => setShowCitySelector(prev => !prev), []);
+
+            // [Log] 月曆點擊
+            const handleDateClick = useCallback((e, url, dateStr, prValue) => {
+                sendUserLog('click_date', { 
+                    date: dateStr, 
+                    pr_value: prValue 
+                });
+                UrlUtils.openLink(e, url);
+            }, [sendUserLog]);
+
+            // [Log] CTA 點擊
+            const handleAgodaClick = useCallback((e) => {
+                const agodaBase = CITY_RESOURCES[selectedCity.id]?.agoda;
+                const finalUrl = UrlUtils.buildAgodaUrl(agodaBase);
+                sendUserLog('click_agoda', { url: finalUrl });
+                UrlUtils.openLink(e, finalUrl);
+            }, [selectedCity, sendUserLog]);
+
+            const handleArticleClick = useCallback((e) => {
+                const url = CITY_RESOURCES[selectedCity.id]?.article || "#";
+                sendUserLog('click_article', { url: url });
+                UrlUtils.openLink(e, url);
+            }, [selectedCity, sendUserLog]);
+
+            // [Log] 分析展開
+            const handleAnalysisExpand = useCallback(() => {
+                sendUserLog('expand_analysis');
+            }, [sendUserLog]);
+
 
             const { days, firstDay, year, month } = useMemo(() => DateUtils.getDaysInMonth(currentDate), [currentDate]);
             const currentInsight = insights[selectedCity.id] || DEFAULT_INSIGHTS[selectedCity.id] || { analysis: "尚無數據" };
@@ -745,6 +808,7 @@
                                     days={days} firstDay={firstDay} year={year} month={month} 
                                     data={data} selectedCityId={selectedCity.id} 
                                     agodaBaseUrl={CITY_RESOURCES[selectedCity.id]?.agoda}
+                                    onDateClick={handleDateClick}
                                 />
                             </React.Fragment>
                         )}
@@ -766,13 +830,16 @@
                         </div>
 
                         <CityActionButtons 
-                            insight={currentInsight} 
+                            insight={CITY_RESOURCES[selectedCity.id]} 
                             selectedCityName={selectedCity.name}
                             selectedCityId={selectedCity.id}
+                            onAgodaClick={handleAgodaClick}
+                            onArticleClick={handleArticleClick}
                         />
 
                         <AnalysisSection 
                             insight={currentInsight} 
+                            onToggle={handleAnalysisExpand}
                         />
 
                         <Footer />
