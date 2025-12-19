@@ -58,7 +58,8 @@
             N8N_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/650159db-37eb-4bfe-9aa1-01bed4d5b989",
             N8N_LOG_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/log-event", 
             AGODA_CID: "1932313",
-            AGODA_HOME: "https://www.agoda.com/"
+            AGODA_HOME: "https://www.agoda.com/",
+            CACHE_KEY: "open_hotel_calendar_cache_v1"
         };
 
         const CITY_RESOURCES = {
@@ -115,6 +116,19 @@
             formatCurrency: (value) => {
                 if (!value) return "";
                 return new Intl.NumberFormat('zh-TW', { style: 'decimal', maximumFractionDigits: 0 }).format(value);
+            },
+            // [新增] 計算下一個過期時間點 (中午12點)
+            getNextNoonTimestamp: () => {
+                const now = new Date();
+                const noon = new Date();
+                noon.setHours(12, 0, 0, 0);
+
+                if (now >= noon) {
+                    // 如果現在已經過了中午12點，過期時間就是明天中午12點
+                    noon.setDate(noon.getDate() + 1);
+                }
+                // 如果還沒到中午12點，過期時間就是今天中午12點
+                return noon.getTime();
             }
         };
 
@@ -263,7 +277,7 @@
                     { id: 'Yilan', name: '宜蘭', icon: Onsen, color: 'text-green-600' },
                     { id: 'Hualien', name: '花蓮', icon: Mountain, color: 'text-emerald-600' },
                     { id: 'Taitung', name: '台東', icon: Balloon, color: 'text-orange-400' },
-                    { id: 'SunMoonLake', name: '日月潭', icon: Mountain, color: 'text-blue-400' },
+                    { id: 'Sun Moon Lake', name: '日月潭', icon: Mountain, color: 'text-blue-400' },
                     { id: 'Jiayi', name: '嘉義', icon: Mountain, color: 'text-green-700' },
                     { id: 'Kenting', name: '墾丁', icon: Lighthouse, color: 'text-blue-500' },
                 ]
@@ -461,6 +475,10 @@
                 return cells;
             }, [days, firstDay]);
 
+            const handleDateClick = (e, url) => {
+                // 直接委派給 onDateClick 處理
+            };
+
             return (
                 <div className="grid grid-cols-7 gap-1 md:gap-2 mb-6 pt-2">
                     {calendarCells.map((day, idx) => {
@@ -573,12 +591,13 @@
             );
         });
 
-        const Footer = memo(({ userId }) => (
+        const Footer = memo(() => (
             <div className="px-4 py-6 text-center text-xs text-gray-400 border-t border-gray-100 mt-4 bg-gray-50/50">
                 <p className="mb-1 font-medium text-gray-500">免責聲明</p>
                 <p className="leading-relaxed">
                     本服務僅分析地區整體房價趨勢，數據係由系統每日分析 30,000+ 筆資料計算得出，僅供參考。<br/>
-                    實際房價會隨著飯店等級、空房數、定價策略等多種因素而有所差異。
+                    實際房價會隨著飯店等級、空房數、定價策略等多種因素而有所差異。<br/>
+                    資料會在每天中午12點更新。
                 </p>
             </div>
         ));
@@ -622,30 +641,44 @@
                     setLoading(true);
                     let uid = null;
 
+                    // 1. LIFF Init (保持不變)
                     try {
-                        // 初始化 LIFF
                         if (window.liff) {
                             await liff.init({ liffId: CONFIG.LIFF_ID });
-                            
-                            // 判斷是否登入
                             if (liff.isLoggedIn()) {
                                 const profile = await liff.getProfile();
                                 uid = profile.userId;
-                                setUserId(uid); // 同步狀態
+                                setUserId(uid);
                                 console.log("LIFF User ID captured:", uid);
-                            } else {
-                                // 若未登入且在 LINE Client 內，嘗試自動登入
-                                if (liff.isInClient()) {
-                                    liff.login(); 
-                                    return; // 登入會重導，中斷後續
-                                }
                             }
                         }
                     } catch (err) {
-                        console.log("LIFF Init failed:", err);
+                        console.log("LIFF Init skipped/failed:", err);
                     }
 
-                    // 呼叫主要資料 API
+                    // 2. [新增] 嘗試讀取快取
+                    const cachedData = localStorage.getItem(CONFIG.CACHE_KEY);
+                    if (cachedData) {
+                        try {
+                            const { expireAt, payload } = JSON.parse(cachedData);
+                            const now = Date.now();
+                            // 檢查是否過期 (現在時間 < 下一個中午12點)
+                            if (now < expireAt) {
+                                console.log("[Cache] Hit! Using stored data.");
+                                processApiResponse(payload);
+                                setLoading(false);
+                                return; // 成功讀取快取後，直接結束
+                            } else {
+                                console.log("[Cache] Expired (Noon passed). Fetching new data...");
+                                localStorage.removeItem(CONFIG.CACHE_KEY); 
+                            }
+                        } catch (e) {
+                            console.warn("Cache parse error:", e);
+                            localStorage.removeItem(CONFIG.CACHE_KEY);
+                        }
+                    }
+
+                    // 3. API 請求 (只有無快取或過期時執行)
                     try {
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 20000); 
@@ -664,6 +697,19 @@
                         try {
                             apiResponse = await response.json();
                             console.log("[API DEBUG]", apiResponse);
+                            
+                            // [新增] 寫入快取 (計算下一次過期時間：下一個中午12點)
+                            try {
+                                const nextNoon = DateUtils.getNextNoonTimestamp();
+                                localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify({
+                                    expireAt: nextNoon,
+                                    payload: apiResponse
+                                }));
+                                console.log(`[Cache] Data saved. Expires at: ${new Date(nextNoon).toLocaleString()}`);
+                            } catch (e) {
+                                console.warn("Failed to save cache:", e);
+                            }
+
                         } catch (e) {
                             throw new Error("API 回傳非 JSON 格式");
                         }
@@ -847,7 +893,7 @@
                             onToggle={handleAnalysisExpand}
                         />
 
-                        <Footer userId={userId} />
+                        <Footer />
                     </div>
 
                     {showCitySelector && (
