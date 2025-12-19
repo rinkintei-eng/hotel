@@ -463,6 +463,10 @@
                 return cells;
             }, [days, firstDay]);
 
+            const handleDateClick = (e, url) => {
+                // 直接委派給 onDateClick 處理
+            };
+
             return (
                 <div className="grid grid-cols-7 gap-1 md:gap-2 mb-6 pt-2">
                     {calendarCells.map((day, idx) => {
@@ -621,7 +625,7 @@
             useEffect(() => {
                 const initializeApp = async () => {
                     setLoading(true);
-                    let uid = null;
+                    let uid = null; // Local variable for initial fetch
 
                     try {
                         if (window.liff) {
@@ -629,12 +633,14 @@
                             if (liff.isLoggedIn()) {
                                 const profile = await liff.getProfile();
                                 uid = profile.userId;
-                                setUserId(uid); 
-                                console.log("LIFF User ID:", uid);
+                                setUserId(uid); // Update state for future logs
+                                console.log("LIFF User ID captured:", uid);
+                            } else {
+                                console.log("LIFF not logged in");
                             }
                         }
                     } catch (err) {
-                        console.log("LIFF Init skipped:", err);
+                        console.log("LIFF Init failed:", err);
                     }
 
                     try {
@@ -730,7 +736,7 @@
             const handlePrevMonth = useCallback(() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)), []);
             const handleNextMonth = useCallback(() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)), []);
             
-            // [Log] 城市切換 - 修正為記錄「目標城市」
+            // [Log] 城市切換
             const handleCitySelect = useCallback((city) => {
                 setSelectedCity(city);
                 sendUserLog('select_city', { target_city: city.name }, city.name);
