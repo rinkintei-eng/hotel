@@ -55,9 +55,7 @@
         const CONFIG = {
             LIFF_ID: "2008400942-3JbRekRM",
             OFFICIAL_LINE_URL: "https://lin.ee/LTFdIJo",
-            // 主資料來源 Webhook
             N8N_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/650159db-37eb-4bfe-9aa1-01bed4d5b989",
-            // Log 專用 Webhook
             N8N_LOG_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/log-event", 
             AGODA_CID: "1932313",
             AGODA_HOME: "https://www.agoda.com/"
@@ -463,10 +461,6 @@
                 return cells;
             }, [days, firstDay]);
 
-            const handleDateClick = (e, url) => {
-                // 直接委派給 onDateClick 處理
-            };
-
             return (
                 <div className="grid grid-cols-7 gap-1 md:gap-2 mb-6 pt-2">
                     {calendarCells.map((day, idx) => {
@@ -622,27 +616,36 @@
                 } catch(e) {}
             }, [userId, selectedCity]);
 
+            // --- 偵測 LIFF 與 初始化 ---
             useEffect(() => {
                 const initializeApp = async () => {
                     setLoading(true);
-                    let uid = null; // Local variable for initial fetch
+                    let uid = null;
 
                     try {
+                        // 初始化 LIFF
                         if (window.liff) {
                             await liff.init({ liffId: CONFIG.LIFF_ID });
+                            
+                            // 判斷是否登入
                             if (liff.isLoggedIn()) {
                                 const profile = await liff.getProfile();
                                 uid = profile.userId;
-                                setUserId(uid); // Update state for future logs
+                                setUserId(uid);
                                 console.log("LIFF User ID captured:", uid);
                             } else {
-                                console.log("LIFF not logged in");
+                                // 若未登入且在 LINE Client 內，嘗試自動登入
+                                if (liff.isInClient()) {
+                                    // 通常 init 後會自動登入，若無則手動
+                                    // liff.login(); 
+                                }
                             }
                         }
                     } catch (err) {
                         console.log("LIFF Init failed:", err);
                     }
 
+                    // 呼叫主要資料 API
                     try {
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 20000); 
