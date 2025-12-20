@@ -56,8 +56,7 @@
             LIFF_ID: "2008400942-nm4l6zlp",
             OFFICIAL_LINE_URL: "https://lin.ee/LTFdIJo",
             
-            // [修正] 切換為「測試用 URL」(包含 -test)，方便您在 n8n 編輯器中除錯
-            // 等流程 Active 後，請移除 "-test"
+            // [確認] 資料抓取 Webhook，每次請求都會帶上 userId
             N8N_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/650159db-37eb-4bfe-9aa1-01bed4d5b989",
             
             N8N_LOG_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/log-event", 
@@ -430,7 +429,7 @@
                         rel="noopener noreferrer" 
                         onClick={handleAgodaClick} // 改用內部定義的 handler
                         className="flex items-center justify-between w-full bg-white p-4 rounded-xl border border-red-100 shadow-sm hover:shadow-md active:scale-98 transition-all group cursor-pointer"
-                     >
+                      >
                         <div className="flex items-center gap-3">
                             <div className="bg-red-50 p-2.5 rounded-full text-red-600"><ExternalLink size={24} /></div>
                             <span className="font-bold text-lg text-gray-800 group-hover:text-red-600 transition-colors">立即去 Agoda 搶便宜</span>
@@ -445,7 +444,7 @@
                             rel="noopener noreferrer"
                             onClick={handleArticleClick}
                             className="flex items-center justify-between w-full bg-white p-4 rounded-xl border border-blue-100 shadow-sm hover:shadow-md active:scale-98 transition-all group cursor-pointer"
-                         >
+                          >
                             <div className="flex items-center gap-3">
                                 <div className="bg-blue-50 p-2.5 rounded-full text-blue-600"><Hotel size={24} /></div>
                                 <span className="font-bold text-lg text-gray-800 group-hover:text-blue-600 transition-colors">{selectedCityName}住宿推薦清單</span>
@@ -630,7 +629,6 @@
                     ...payload
                 };
                 
-                // [新增] 產生隨機 Token 放在 Header
                 const token = UrlUtils.getHeaderToken();
                 
                 try {
@@ -694,7 +692,6 @@
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 20000); 
 
-                        // [新增] 產生固定 Token (API_KEY)
                         const token = UrlUtils.getHeaderToken();
 
                         const response = await fetch(CONFIG.N8N_WEBHOOK_URL, {
@@ -703,7 +700,10 @@
                                 'Content-Type': 'application/json',
                                 'X-App-OPEN-san': token 
                             },
-                            body: JSON.stringify({ userId: uid }), 
+                            // [修改] 確保每次請求都包含 userId
+                            body: JSON.stringify({ 
+                                userId: uid,  // 這裡確保將 LIFF 抓到的 userId 傳送出去
+                            }), 
                             signal: controller.signal
                         });
                         clearTimeout(timeoutId);
@@ -930,4 +930,3 @@
     </script>
 </body>
 </html>
-
