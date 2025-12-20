@@ -458,6 +458,7 @@
             const [selectedMonitorCity, setSelectedMonitorCity] = useState(initialCityId || cities[0].id);
             const [selectedStartDate, setSelectedStartDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
             const [selectedEndDate, setSelectedEndDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
+            const [selectedPR, setSelectedPR] = useState(15); // Default PR value
 
             // 自動修正：退房日不能早於入住日
             useEffect(() => {
@@ -522,11 +523,22 @@
                                     />
                                 </div>
                             </div>
+
+                            <div className="space-y-1">
+                                <label className="text-sm font-bold text-gray-700 ml-1">通知觸發 PR 值 (低於此值通知)</label>
+                                <input 
+                                    type="number" 
+                                    value={selectedPR}
+                                    onChange={(e) => setSelectedPR(e.target.value)}
+                                    placeholder="例如: 15"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 font-medium"
+                                />
+                            </div>
                         </div>
 
                         <div className="space-y-3">
                             <button 
-                                onClick={() => onEnable(selectedMonitorCity, selectedStartDate, selectedEndDate)}
+                                onClick={() => onEnable(selectedMonitorCity, selectedStartDate, selectedEndDate, selectedPR)}
                                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
                             >
                                 <Bell size={18} />
@@ -1059,8 +1071,8 @@
             }, [sendUserLog]);
 
             // [新增] 監控功能：開啟通知 (含 API 串接與 UI 回饋)
-            const handleEnableNotification = useCallback(async (cityId, startDate, endDate) => {
-                sendUserLog('enable_notification', { target_city_id: cityId, start_date: startDate, end_date: endDate });
+            const handleEnableNotification = useCallback(async (cityId, startDate, endDate, prValue) => {
+                sendUserLog('enable_notification', { target_city_id: cityId, start_date: startDate, end_date: endDate, target_pr: prValue });
                 
                 // 關閉監控設定窗，準備顯示結果
                 setShowMonitorModal(false);
@@ -1079,7 +1091,8 @@
                             userId: userId, // 傳送當前 userId
                             cityId: cityId, 
                             startDate: startDate,
-                            endDate: endDate
+                            endDate: endDate,
+                            pr: prValue // Send it
                         })
                     });
 
