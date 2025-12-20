@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OPEN桑 房價月曆</title>
+    <title>北海道OPEN桑 房價月曆</title>
     
     <!-- 1. 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -55,11 +55,16 @@
         const CONFIG = {
             LIFF_ID: "2008400942-nm4l6zlp",
             OFFICIAL_LINE_URL: "https://lin.ee/LTFdIJo",
+            
+            // [修正] 切換為「測試用 URL」(包含 -test)，方便您在 n8n 編輯器中除錯
+            // 等流程 Active 後，請移除 "-test"
             N8N_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/650159db-37eb-4bfe-9aa1-01bed4d5b989",
+            
             N8N_LOG_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/log-event", 
             AGODA_CID: "1932313",
             AGODA_HOME: "https://www.agoda.com/",
-            CACHE_KEY: "open_hotel_calendar_cache_v1"
+            CACHE_KEY: "open_hotel_calendar_cache_v1",
+            API_KEY: "vxjyMp3oAT6nH5VCwmwB2xi8cdXpvyrEqXG9Azbd" 
         };
 
         const CITY_RESOURCES = {
@@ -117,17 +122,14 @@
                 if (!value) return "";
                 return new Intl.NumberFormat('zh-TW', { style: 'decimal', maximumFractionDigits: 0 }).format(value);
             },
-            // [新增] 計算下一個過期時間點 (中午12點)
             getNextNoonTimestamp: () => {
                 const now = new Date();
                 const noon = new Date();
                 noon.setHours(12, 0, 0, 0);
 
                 if (now >= noon) {
-                    // 如果現在已經過了中午12點，過期時間就是明天中午12點
                     noon.setDate(noon.getDate() + 1);
                 }
-                // 如果還沒到中午12點，過期時間就是今天中午12點
                 return noon.getTime();
             }
         };
@@ -173,7 +175,9 @@
                         external: true // 強制用外部瀏覽器開啟，確保 Cookie
                     });
                 }
-                // 一般環境維持 href 跳轉
+            },
+            getHeaderToken: () => {
+                return CONFIG.API_KEY || "";
             }
         };
 
@@ -248,7 +252,6 @@
         const Train = memo((props) => <IconBase {...props}><path d="M4 4h16c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M4 14h16 M2 14h20 M6 18l-2 3 M18 18l2 3 M8 8h8v4H8z"/></IconBase>);
         const Lighthouse = memo((props) => <IconBase {...props}><path d="M8 22h8 M9 22l2-14h2l2 14 M12 2l2 2h-4l2-2z M8 8h8"/></IconBase>);
         const Building = memo((props) => <IconBase {...props}><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><path d="M9 22v-4h6v4 M8 6h.01 M16 6h.01 M8 10h.01 M16 10h.01 M8 14h.01 M16 14h.01 M8 18h.01 M16 18h.01"/></IconBase>);
-        const DollarSign = memo((props) => <IconBase {...props}><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></IconBase>);
 
         const CITY_CATEGORIES = [
             {
@@ -345,7 +348,7 @@
             <div className="px-4 py-3 bg-white flex-none flex items-center justify-between shadow-sm z-20 relative">
                 <div className="flex items-center gap-2">
                     <MapPin className="text-red-600 fill-red-50" size={24} />
-                    <h1 className="text-xl font-bold text-gray-800">OPEN桑 房價月曆</h1>
+                    <h1 className="text-xl font-bold text-gray-800">升級 PRO 版本</h1>
                 </div>
                 <button 
                     onClick={onOpenCitySelector}
@@ -404,14 +407,20 @@
         ));
 
         const CityActionButtons = memo(({ insight, selectedCityName, selectedCityId, onAgodaClick, onArticleClick }) => {
-            const NO_RECOMMENDATION_IDS = [
-                'Seoul', 
-                'Taipei', 'Taichung', 'Tainan', 'Kaohsiung', 'Yilan', 
-                'Hualien', 'Taitung', 'SunMoonLake', 'Jiayi', 'Kenting'
-            ];
+            const handleAgodaClick = (e) => {
+                const agodaBase = CITY_RESOURCES[selectedCityId]?.agoda;
+                const finalUrl = UrlUtils.buildAgodaUrl(agodaBase);
+                UrlUtils.openLink(e, finalUrl);
+            };
 
-            const showRecommendation = !NO_RECOMMENDATION_IDS.includes(selectedCityId);
-            const displayAgodaUrl = UrlUtils.buildAgodaUrl(insight?.agodaUrl);
+            const handleArticleClick = (e) => {
+                const url = CITY_RESOURCES[selectedCityId]?.article || "#";
+                UrlUtils.openLink(e, url);
+            }
+
+            const showRecommendation = !!CITY_RESOURCES[selectedCityId]?.article;
+            const agodaBase = CITY_RESOURCES[selectedCityId]?.agoda;
+            const displayAgodaUrl = UrlUtils.buildAgodaUrl(agodaBase);
 
             return (
                 <div className="px-2 mb-6 space-y-3">
@@ -419,7 +428,7 @@
                         href={displayAgodaUrl} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        onClick={onAgodaClick}
+                        onClick={handleAgodaClick} // 改用內部定義的 handler
                         className="flex items-center justify-between w-full bg-white p-4 rounded-xl border border-red-100 shadow-sm hover:shadow-md active:scale-98 transition-all group cursor-pointer"
                      >
                         <div className="flex items-center gap-3">
@@ -431,10 +440,10 @@
                     
                     {showRecommendation && (
                          <a 
-                            href={insight?.articleUrl || "#"} 
+                            href={CITY_RESOURCES[selectedCityId]?.article || "#"} 
                             target="_blank"
                             rel="noopener noreferrer"
-                            onClick={onArticleClick}
+                            onClick={handleArticleClick}
                             className="flex items-center justify-between w-full bg-white p-4 rounded-xl border border-blue-100 shadow-sm hover:shadow-md active:scale-98 transition-all group cursor-pointer"
                          >
                             <div className="flex items-center gap-3">
@@ -474,10 +483,6 @@
                 for (let i = 1; i <= days; i++) cells.push(i);
                 return cells;
             }, [days, firstDay]);
-
-            const handleDateClick = (e, url) => {
-                // 直接委派給 onDateClick 處理
-            };
 
             return (
                 <div className="grid grid-cols-7 gap-1 md:gap-2 mb-6 pt-2">
@@ -625,10 +630,16 @@
                     ...payload
                 };
                 
+                // [新增] 產生隨機 Token 放在 Header
+                const token = UrlUtils.getHeaderToken();
+                
                 try {
                     fetch(CONFIG.N8N_LOG_WEBHOOK_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'X-App-OPEN-san': token 
+                        },
                         body: JSON.stringify(logData),
                         keepalive: true 
                     }).catch(e => console.warn("Log failed:", e));
@@ -662,14 +673,14 @@
                         try {
                             const { expireAt, payload } = JSON.parse(cachedData);
                             const now = Date.now();
-                            // 檢查是否過期 (現在時間 < 下一個中午12點)
+                            // 檢查是否過期
                             if (now < expireAt) {
                                 console.log("[Cache] Hit! Using stored data.");
                                 processApiResponse(payload);
                                 setLoading(false);
-                                return; // 成功讀取快取後，直接結束
+                                return; // 成功讀取快取後，直接結束，不發送 API 請求
                             } else {
-                                console.log("[Cache] Expired (Noon passed). Fetching new data...");
+                                console.log("[Cache] Expired. Fetching new data...");
                                 localStorage.removeItem(CONFIG.CACHE_KEY); 
                             }
                         } catch (e) {
@@ -683,9 +694,15 @@
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 20000); 
 
+                        // [新增] 產生固定 Token (API_KEY)
+                        const token = UrlUtils.getHeaderToken();
+
                         const response = await fetch(CONFIG.N8N_WEBHOOK_URL, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'X-App-Verification': token 
+                            },
                             body: JSON.stringify({ userId: uid }), 
                             signal: controller.signal
                         });
@@ -698,7 +715,7 @@
                             apiResponse = await response.json();
                             console.log("[API DEBUG]", apiResponse);
                             
-                            // [新增] 寫入快取 (計算下一次過期時間：下一個中午12點)
+                            // [新增] 寫入快取
                             try {
                                 const nextNoon = DateUtils.getNextNoonTimestamp();
                                 localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify({
